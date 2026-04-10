@@ -508,8 +508,8 @@ class PanelWindowController: NSObject, NSWindowDelegate {
     private func startFullscreenExitPoller() {
         fullscreenPoller?.invalidate()
         fullscreenPoller = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
             Task { @MainActor in
-                guard let self = self else { timer.invalidate(); return }
                 if !self.isActiveSpaceFullscreen() {
                     self.fullscreenLatch = false
                     self.updateVisibility()
