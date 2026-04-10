@@ -14,10 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Select Xcode 16.2 (Swift 5.9 compatible)
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app
+
       - name: Build universal binary
         run: |
-          swift build -c release --arch arm64 -Xswiftc -strict-concurrency=minimal
-          swift build -c release --arch x86_64 -Xswiftc -strict-concurrency=minimal
+          swift build -c release --arch arm64
+          swift build -c release --arch x86_64
 
       - name: Assemble app bundle
         run: |
