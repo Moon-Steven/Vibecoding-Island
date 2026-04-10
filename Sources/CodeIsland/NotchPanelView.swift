@@ -299,7 +299,7 @@ private struct CompactLeftWing: View {
                 }
             } else {
                 let hideFloatingWord = hasNotch && showToolStatus && shownTool != nil
-                MascotView(source: displaySource, status: displayStatus, size: mascotSize, currentTool: hideFloatingWord ? nil : displaySession?.currentTool)
+                MascotView(source: displaySource, status: displayStatus, size: mascotSize, currentTool: displaySession?.currentTool, showWord: !hideFloatingWord)
                     .id(displaySource)
                     .transition(.opacity)
                     .animation(.easeInOut(duration: 0.3), value: displaySource)

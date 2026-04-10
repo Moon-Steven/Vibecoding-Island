@@ -20,6 +20,7 @@ struct MascotView: View {
     let status: AgentStatus
     var size: CGFloat = 27
     var currentTool: String? = nil
+    var showWord: Bool = true
     @AppStorage(SettingsKey.mascotSpeed) private var speedPct = SettingsDefaults.mascotSpeed
     @State private var frozenWord: String = ""
     @State private var lastToolKey: String = ""
@@ -50,7 +51,7 @@ struct MascotView: View {
             }
 
             // Floating keyword — right of icon
-            if source == "claude" {
+            if source == "claude" && showWord {
                 Text(frozenWord)
                     .font(.system(size: max(6, size * 0.32), weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.85))
