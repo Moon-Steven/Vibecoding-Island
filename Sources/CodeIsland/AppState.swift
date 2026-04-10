@@ -578,12 +578,9 @@ final class AppState {
         surface = .completionCard(sessionId: sessionId)
         completionHasBeenEntered = false
 
+        // No auto-collapse timer — completion stays visible until user interacts
+        // User can dismiss by hovering then leaving, or clicking outside
         autoCollapseTask?.cancel()
-        autoCollapseTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            guard !Task.isCancelled else { return }
-            showNextCompletionOrCollapse()
-        }
     }
 
     func cancelCompletionQueue() {

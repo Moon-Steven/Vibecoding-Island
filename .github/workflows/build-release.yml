@@ -1,0 +1,80 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal binary
+        run: |
+          swift build -c release --arch arm64
+          swift build -c release --arch x86_64
+
+      - name: Assemble app bundle
+        run: |
+          APP_NAME="CodeIsland"
+          BUILD_DIR=".build/release"
+          APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
+          ARM_DIR=".build/arm64-apple-macosx/release"
+          X86_DIR=".build/x86_64-apple-macosx/release"
+
+          mkdir -p "$APP_BUNDLE/Contents/MacOS"
+          mkdir -p "$APP_BUNDLE/Contents/Helpers"
+          mkdir -p "$APP_BUNDLE/Contents/Resources"
+
+          lipo -create "$ARM_DIR/$APP_NAME" "$X86_DIR/$APP_NAME" \
+               -output "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+          lipo -create "$ARM_DIR/codeisland-bridge" "$X86_DIR/codeisland-bridge" \
+               -output "$APP_BUNDLE/Contents/Helpers/codeisland-bridge"
+          cp Info.plist "$APP_BUNDLE/Contents/Info.plist"
+
+          # Copy resource bundles
+          for bundle in .build/*/release/*.bundle; do
+            if [ -e "$bundle" ]; then
+              cp -R "$bundle" "$APP_BUNDLE/Contents/Resources/"
+              break
+            fi
+          done
+
+          # Copy app icon
+          if [ -f "Sources/CodeIsland/Resources/AppIcon.icns" ]; then
+            cp "Sources/CodeIsland/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+          fi
+
+          # Ad-hoc sign
+          codesign --force --sign - "$APP_BUNDLE/Contents/Helpers/codeisland-bridge"
+          codesign --force --sign - --entitlements CodeIsland.entitlements "$APP_BUNDLE"
+
+          echo "APP_BUNDLE=$APP_BUNDLE" >> "$GITHUB_ENV"
+
+      - name: Create DMG
+        run: |
+          DMG_PATH=".build/release/CodeIsland.dmg"
+          hdiutil create -volname "CodeIsland" \
+            -srcfolder ".build/release/CodeIsland.app" \
+            -ov -format UDZO \
+            "$DMG_PATH"
+          echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
+
+      - name: Create ZIP
+        run: |
+          ZIP_PATH=".build/release/CodeIsland.zip"
+          ditto -c -k --keepParent ".build/release/CodeIsland.app" "$ZIP_PATH"
+          echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            .build/release/CodeIsland.dmg
+            .build/release/CodeIsland.zip
+          generate_release_notes: true

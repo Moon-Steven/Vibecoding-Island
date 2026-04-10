@@ -191,18 +191,8 @@ struct NotchPanelView: View {
                 switch appState.surface {
                 case .approvalCard, .questionCard: return
                 case .completionCard:
-                    // Completion card: mark entered on hover-in, block collapse until entered
-                    if hovering {
-                        appState.completionHasBeenEntered = true
-                    } else if appState.completionHasBeenEntered {
-                        // Mouse entered then left — allow collapse
-                        hoverTimer?.invalidate()
-                        hoverTimer = nil
-                        withAnimation(NotchAnimation.close) {
-                            appState.surface = .collapsed
-                            appState.cancelCompletionQueue()
-                        }
-                    }
+                    // Completion stays visible — only dismissed by clicking outside or expanding session list
+                    if hovering { appState.completionHasBeenEntered = true }
                     return
                 default: break
                 }
@@ -308,7 +298,8 @@ private struct CompactLeftWing: View {
                     .overlay(Rectangle().stroke(.white.opacity(0.1), lineWidth: 1))
                 }
             } else {
-                MascotView(source: displaySource, status: displayStatus, size: mascotSize)
+                let hideFloatingWord = hasNotch && showToolStatus && shownTool != nil
+                MascotView(source: displaySource, status: displayStatus, size: mascotSize, currentTool: hideFloatingWord ? nil : displaySession?.currentTool)
                     .id(displaySource)
                     .transition(.opacity)
                     .animation(.easeInOut(duration: 0.3), value: displaySource)
@@ -549,17 +540,24 @@ private struct NotchIconButton: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(tint.opacity(hovering ? 1.0 : 0.85))
-                .frame(width: 22, height: 22)
+                .foregroundStyle(tint.opacity(hovering ? 1.0 : 0.7))
+                .frame(width: 24, height: 24)
                 .background(
-                    Circle()
-                        .fill(tint.opacity(hovering ? 0.2 : 0.08))
+                    ZStack {
+                        Circle().fill(.ultraThinMaterial)
+                        Circle().fill(tint.opacity(hovering ? 0.18 : 0.06))
+                    }
                 )
-                .scaleEffect(hovering ? 1.1 : 1.0)
+                .overlay(
+                    Circle()
+                        .strokeBorder(tint.opacity(hovering ? 0.25 : 0.08), lineWidth: 0.5)
+                )
+                .shadow(color: tint.opacity(hovering ? 0.2 : 0), radius: 6, y: 1)
+                .scaleEffect(hovering ? 1.08 : 1.0)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .onHover { h in withAnimation(NotchAnimation.micro) { hovering = h } }
+        .onHover { h in withAnimation(.easeInOut(duration: 0.2)) { hovering = h } }
         .help(tooltip ?? "")
     }
 }
@@ -928,20 +926,26 @@ private struct QuestionBar: View {
                         .foregroundStyle(Color(red: 0.3, green: 0.85, blue: 0.4))
                     TextField(L10n.shared["type_answer"], text: $textInput)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 10.5, design: .monospaced))
+                        .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(.white)
                         .focused($isFocused)
                         .onSubmit {
                             if !textInput.isEmpty { onAnswer(textInput) }
                         }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(4)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.white.opacity(0.04))
+                    }
+                )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
                 )
                 .padding(.horizontal, 14)
             }
@@ -1032,25 +1036,55 @@ private struct PixelButton: View {
     let border: Color
     let action: () -> Void
     @State private var hovering = false
+    @State private var pressing = false
 
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(fg)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
+                .padding(.vertical, 8)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(hovering ? bg.opacity(1.5) : bg)
+                    ZStack {
+                        // Base glass layer
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                        // Tinted overlay
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(bg.opacity(hovering ? 0.85 : 0.6))
+                        // Top highlight (inner glow)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(hovering ? 0.18 : 0.08), .clear],
+                                    startPoint: .top,
+                                    endPoint: .center
+                                )
+                            )
+                    }
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(hovering ? border : border.opacity(0.4), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [border.opacity(hovering ? 0.6 : 0.25), border.opacity(hovering ? 0.3 : 0.1)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
                 )
+                .shadow(color: bg.opacity(hovering ? 0.35 : 0), radius: 8, y: 2)
+                .scaleEffect(pressing ? 0.96 : 1.0)
         }
         .buttonStyle(.plain)
-        .onHover { h in withAnimation(NotchAnimation.micro) { hovering = h } }
+        .onHover { h in withAnimation(.easeInOut(duration: 0.2)) { hovering = h } }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in withAnimation(.easeOut(duration: 0.08)) { pressing = true } }
+                .onEnded { _ in withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { pressing = false } }
+        )
     }
 }
 
@@ -1352,7 +1386,7 @@ private struct SessionCard: View {
         HStack(alignment: .center, spacing: 8) {
             // Column 1: Character + subagent icons
             VStack(spacing: 3) {
-                MascotView(source: session.source, status: session.status, size: 32)
+                MascotView(source: session.source, status: session.status, size: 32, currentTool: session.currentTool)
                 if showAgentDetails && !session.subagents.isEmpty {
                     let sorted = session.subagents.values.sorted { $0.startTime < $1.startTime }
                     // Grid: 4 per row, 8px icons
@@ -1409,58 +1443,63 @@ private struct SessionCard: View {
                         .truncationMode(.tail)
                 }
 
-            // Chat history + live status
+            // Chat history + live status — compact, bottom-aligned, pull-down to see more
             if !session.recentMessages.isEmpty || session.status != .idle {
-                VStack(alignment: .leading, spacing: 3) {
-                    // Chat messages (detailed mode only)
-                    let visibleMessages = session.status != .idle
-                        ? Array(session.recentMessages.suffix(2))
-                        : session.recentMessages
-                    ForEach(visibleMessages) { msg in
-                        if msg.isUser {
-                            HStack(alignment: .top, spacing: 4) {
-                                Text(">")
-                                    .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(Color(red: 0.3, green: 0.85, blue: 0.4))
-                                Text(renderUserText(msg.text))
-                                    .font(.system(size: fontSize, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(0.9))
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(session.recentMessages) { msg in
+                                if msg.isUser {
+                                    HStack(alignment: .top, spacing: 4) {
+                                        Text(">")
+                                            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(Color(red: 0.3, green: 0.85, blue: 0.4))
+                                        Text(renderUserText(msg.text))
+                                            .font(.system(size: fontSize, weight: .medium, design: .monospaced))
+                                            .foregroundStyle(.white.opacity(0.9))
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                    }
+                                } else {
+                                    HStack(alignment: .top, spacing: 4) {
+                                        Text("$")
+                                            .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(Color(red: 0.85, green: 0.47, blue: 0.34))
+                                        Text(renderMarkdown(compactText(stripDirectives(msg.text))))
+                                            .font(.system(size: fontSize, design: .monospaced))
+                                            .foregroundStyle(.white.opacity(0.85))
+                                            .lineLimit(aiLineLimit)
+                                            .truncationMode(.tail)
+                                    }
+                                }
                             }
-                        } else {
-                            HStack(alignment: .top, spacing: 4) {
-                                Text("$")
-                                    .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(Color(red: 0.85, green: 0.47, blue: 0.34))
-                                Text(renderMarkdown(compactText(stripDirectives(msg.text))))
-                                    .font(.system(size: fontSize, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(0.85))
-                                    .lineLimit(aiLineLimit)
-                                    .truncationMode(.tail)
-                            }
-                        }
-                    }
 
-                    // Working indicator: show what AI is doing right now
-                    if session.status != .idle {
-                        HStack(spacing: 4) {
-                            Text("$")
-                                .font(.system(size: fontSize, weight: .bold, design: .monospaced))
-                                .foregroundStyle(Color(red: 0.85, green: 0.47, blue: 0.34))
-                            if let tool = session.currentTool {
-                                MorphText(
-                                    text: session.toolDescription ?? tool,
-                                    font: .system(size: fontSize, design: .monospaced),
-                                    color: .white.opacity(0.75)
-                                )
-                                .truncationMode(.tail)
-                            } else {
-                                TypingIndicator(fontSize: fontSize, label: "thinking")
+                            // Working indicator
+                            if session.status != .idle {
+                                HStack(spacing: 4) {
+                                    Text("$")
+                                        .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(Color(red: 0.85, green: 0.47, blue: 0.34))
+                                    if let tool = session.currentTool {
+                                        MorphText(
+                                            text: session.toolDescription ?? tool,
+                                            font: .system(size: fontSize, design: .monospaced),
+                                            color: .white.opacity(0.75)
+                                        )
+                                        .truncationMode(.tail)
+                                    } else {
+                                        TypingIndicator(fontSize: fontSize, label: "thinking")
+                                    }
+                                }
+                                .id("bottom")
+                            } else if let lastId = session.recentMessages.last?.id {
+                                Color.clear.frame(height: 0).id("bottom_\(lastId)")
                             }
                         }
                     }
+                    .defaultScrollAnchor(.bottom)
                 }
+                .frame(maxHeight: 48)
                 .padding(.leading, 4)
             }
             } // end Column 2 VStack

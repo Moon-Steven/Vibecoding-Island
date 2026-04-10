@@ -67,14 +67,14 @@ public struct SessionSnapshot {
         subagents.values.filter { $0.status != .idle }.count
     }
 
-    public mutating func addRecentMessage(_ msg: ChatMessage, maxCount: Int = 3) {
+    public mutating func addRecentMessage(_ msg: ChatMessage, maxCount: Int = 15) {
         recentMessages.append(msg)
         if recentMessages.count > maxCount {
             recentMessages.removeFirst(recentMessages.count - maxCount)
         }
     }
 
-    public mutating func insertRecentMessage(_ msg: ChatMessage, at index: Int, maxCount: Int = 3) {
+    public mutating func insertRecentMessage(_ msg: ChatMessage, at index: Int, maxCount: Int = 15) {
         recentMessages.insert(msg, at: index)
         if recentMessages.count > maxCount {
             recentMessages.removeFirst(recentMessages.count - maxCount)

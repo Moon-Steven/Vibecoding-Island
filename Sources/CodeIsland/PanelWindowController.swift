@@ -298,6 +298,10 @@ class PanelWindowController: NSObject, NSWindowDelegate {
     private func refreshCurrentScreen(forceRebuild: Bool = false) {
         if isAnimatingScreenHop { return }
 
+        // Lock screen when panel is expanded (approval, question, session list, completion)
+        // to prevent jumping to another display during user interaction
+        if !forceRebuild && appState.surface.isExpanded { return }
+
         let screen = chosenScreen()
         let signature = ScreenDetector.signature(for: screen)
 

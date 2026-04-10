@@ -3,9 +3,53 @@ import CodeIslandCore
 
 /// Clawd — Claude mascot, adapted from clawd-on-desk SVG pixel art.
 /// Renders SVG rects proportionally via Canvas + TimelineView animations.
+/// Tool category — drives animation style, color, and floating keywords
+private enum ToolCategory {
+    case terminal, fileRead, fileWrite, web, thinking
+
+    init(tool: String?) {
+        guard let t = tool?.lowercased() else { self = .thinking; return }
+        switch t {
+        case "bash":                              self = .terminal
+        case "read", "grep", "glob", "ls":        self = .fileRead
+        case "edit", "write", "notebookedit":     self = .fileWrite
+        case "webfetch", "websearch":             self = .web
+        default:
+            if t.contains("bash") || t.contains("shell") { self = .terminal }
+            else if t.contains("read") || t.contains("grep") || t.contains("glob") { self = .fileRead }
+            else if t.contains("edit") || t.contains("write") { self = .fileWrite }
+            else if t.contains("web") || t.contains("fetch") { self = .web }
+            else { self = .thinking }
+        }
+    }
+
+    /// Accent color per tool type
+    var color: Color {
+        switch self {
+        case .terminal:  return Color(red: 0.3, green: 1.0, blue: 0.5)   // neon green
+        case .fileRead:  return Color(red: 0.4, green: 0.75, blue: 1.0)  // sky blue
+        case .fileWrite: return Color(red: 1.0, green: 0.65, blue: 0.2)  // amber
+        case .web:       return Color(red: 0.7, green: 0.45, blue: 1.0)  // violet
+        case .thinking:  return Color(red: 0.75, green: 0.75, blue: 0.85) // silver
+        }
+    }
+
+    /// Rotating keywords — short, punchy, one-word
+    var words: [String] {
+        switch self {
+        case .terminal:  return ["exec", "run", "brew", "pipe", "sudo", "bash"]
+        case .fileRead:  return ["scan", "grep", "find", "peek", "read", "seek"]
+        case .fileWrite: return ["edit", "code", "fix", "craft", "type", "save"]
+        case .web:       return ["fetch", "ping", "curl", "load", "sync", "pull"]
+        case .thinking:  return ["hmm", "idea", "plan", "think", "wait", "..."]
+        }
+    }
+}
+
 struct ClawdView: View {
     let status: AgentStatus
     var size: CGFloat = 27
+    var currentTool: String? = nil
     @State private var alive = false
     @Environment(\.mascotSpeed) private var speed
 
@@ -158,70 +202,130 @@ struct ClawdView: View {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // WORK — typing: bounce + arm rotation + keyboard + squinted eyes
+    // WORK — typing character + tool-specific ambient effects + rotating word
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     private var workScene: some View {
         TimelineView(.periodic(from: .now, by: 0.03)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate * speed
-            workCanvas(t: t)
+            workCanvas(t: t, cat: ToolCategory(tool: currentTool))
         }
     }
 
-    private func workCanvas(t: Double) -> some View {
-        // Body bounce: 0.35s (matches SVG)
+    private func workCanvas(t: Double, cat: ToolCategory) -> some View {
         let bounce = sin(t * 2 * .pi / 0.35) * 1.2
         let breathe = sin(t * 2 * .pi / 3.2)
-
-        // Arm typing: fast, correct direction (inward toward keyboard)
-        // Left: -10° to -55° (0.15s cycle), Right: 10° to 55° (0.12s cycle)
-        let armLRaw = sin(t * 2 * .pi / 0.15)  // -1..1
-        let armL = armLRaw * 22.5 - 32.5        // -55 to -10
+        let armLRaw = sin(t * 2 * .pi / 0.15)
+        let armL = armLRaw * 22.5 - 32.5
         let armRRaw = sin(t * 2 * .pi / 0.12)
-        let armR = armRRaw * 22.5 + 32.5        // 10 to 55
-
-        // Key flash synced: flash left keys when left arm is down (armLRaw > 0.5)
+        let armR = armRRaw * 22.5 + 32.5
         let leftHit = armLRaw > 0.3
         let rightHit = armRRaw > 0.3
-        // Randomize which key flashes using time
-        let leftKeyCol = Int(t / 0.15) % 3     // 0..2 (left side keys)
-        let rightKeyCol = 3 + Int(t / 0.12) % 3 // 3..5 (right side keys)
-
-        // Eyes: squinted, occasional scan up
+        let leftKeyCol = Int(t / 0.15) % 3
+        let rightKeyCol = 3 + Int(t / 0.12) % 3
         let scanPhase = t.truncatingRemainder(dividingBy: 10.0)
         let eyeScale: CGFloat = (scanPhase > 5.7 && scanPhase < 6.9) ? 1.0 : 0.5
         let eyeDY: CGFloat = eyeScale < 0.8 ? 1.0 : -0.5
         let blinkPhase = t.truncatingRemainder(dividingBy: 3.5)
         let finalEyeScale = (blinkPhase > 1.4 && blinkPhase < 1.55) ? 0.1 : eyeScale
+        let accent = cat.color
 
         return Canvas { c, sz in
             let v = V(sz, svgW: 16, svgH: 11, svgY0: 5.5)
             let dy = bounce
 
-            // 1. Shadow
+            // ── Tool-specific ambient effect (behind character) ──
+            switch cat {
+            case .terminal:
+                // Matrix rain — falling green dots
+                for i in 0..<6 {
+                    let seed = Double(i) * 3.7
+                    let col = CGFloat(1 + i * 2 + Int(sin(seed) * 1.5))
+                    let fallPhase = (t * 4.0 + seed).truncatingRemainder(dividingBy: 3.0) / 3.0
+                    let fy = CGFloat(4 + fallPhase * 12)
+                    let fOp = fallPhase < 0.8 ? 0.6 : (1.0 - fallPhase) * 3.0
+                    c.fill(Path(v.r(col, fy, 0.6, 0.6)),
+                           with: .color(accent.opacity(fOp * 0.5)))
+                    // Trail
+                    if fallPhase > 0.1 {
+                        c.fill(Path(v.r(col, fy - 1.2, 0.6, 0.6)),
+                               with: .color(accent.opacity(fOp * 0.2)))
+                    }
+                }
+
+            case .fileRead:
+                // Scanning beam — horizontal sweep
+                let sweepPhase = (t * 1.5).truncatingRemainder(dividingBy: 2.0)
+                let sweepY = CGFloat(6 + sweepPhase * 4.5)
+                c.fill(Path(v.r(0, sweepY, 15, 0.4)),
+                       with: .color(accent.opacity(0.25)))
+                c.fill(Path(v.r(0, sweepY - 0.2, 15, 0.8)),
+                       with: .color(accent.opacity(0.08)))
+
+            case .fileWrite:
+                // Warm sparks rising from keyboard
+                for i in 0..<4 {
+                    let seed = Double(i) * 2.3 + t * 3.0
+                    let sparkPhase = seed.truncatingRemainder(dividingBy: 2.0) / 2.0
+                    let sx = CGFloat(3 + sin(seed * 0.7) * 5)
+                    let sy = CGFloat(12.0 - sparkPhase * 8.0)
+                    let sOp = sparkPhase < 0.6 ? 0.8 : (1.0 - sparkPhase) * 2.0
+                    let sparkSize: CGFloat = 0.5 + CGFloat(sin(seed * 2.0)) * 0.3
+                    c.fill(Path(v.r(sx, sy, sparkSize, sparkSize)),
+                           with: .color(accent.opacity(max(0, sOp) * 0.7)))
+                }
+
+            case .web:
+                // Pulsing signal rings from character center
+                for i in 0..<3 {
+                    let ringPhase = (t * 1.2 + Double(i) * 0.8).truncatingRemainder(dividingBy: 2.4) / 2.4
+                    let ringR = CGFloat(2 + ringPhase * 6)
+                    let ringOp = max(0, 0.4 - ringPhase * 0.5)
+                    let cx = v.ox + 7.5 * v.s
+                    let cy = v.oy + (9 - v.y0 + dy) * v.s
+                    c.stroke(Path(ellipseIn: CGRect(x: cx - ringR * v.s, y: cy - ringR * v.s,
+                                                     width: ringR * 2 * v.s, height: ringR * 2 * v.s)),
+                             with: .color(accent.opacity(ringOp)), lineWidth: 0.4)
+                }
+
+            case .thinking:
+                // Soft orbiting dots
+                for i in 0..<3 {
+                    let angle = t * 1.5 + Double(i) * 2.094
+                    let orbR: CGFloat = 4
+                    let ox = CGFloat(7.5 + cos(angle) * Double(orbR))
+                    let oy = CGFloat(8 + sin(angle) * Double(orbR) * 0.5 + dy)
+                    let dotOp = 0.3 + sin(t * 2.0 + Double(i)) * 0.2
+                    c.fill(Path(v.r(ox, oy, 0.8, 0.8)),
+                           with: .color(accent.opacity(dotOp)))
+                }
+            }
+
+            // ── Base character ──
+
+            // Shadow
             let shadowW: CGFloat = 9 - abs(dy) * 0.3
             c.fill(Path(v.r(3 + (9 - shadowW) / 2, 15, shadowW, 1)),
                    with: .color(.black.opacity(max(0.1, 0.4 - abs(dy) * 0.03))))
 
-            // 2. Short legs (h=2, behind keyboard)
+            // Legs
             for x: CGFloat in [3, 5, 9, 11] {
                 c.fill(Path(v.r(x, 13, 1, 2)), with: .color(Self.bodyC))
             }
 
-            // 3. Torso
+            // Torso
             let bScale = 1.0 + breathe * 0.015
             let torsoW = 11 * bScale
             c.fill(Path(v.r(2 - (torsoW - 11) / 2, 6, torsoW, 7, dy: dy)),
                    with: .color(Self.bodyC))
 
-            // 4. Eyes
+            // Eyes
             let eyeH: CGFloat = 2 * finalEyeScale
             let eyeY: CGFloat = 8 + (2 - eyeH) / 2 + eyeDY
             c.fill(Path(v.r(4, eyeY, 1, eyeH, dy: dy)), with: .color(Self.eyeC))
             c.fill(Path(v.r(10, eyeY, 1, eyeH, dy: dy)), with: .color(Self.eyeC))
 
-            // 5. Keyboard (on top of legs)
+            // Keyboard
             c.fill(Path(v.r(-0.5, 11.8, 16, 3.5)), with: .color(Self.kbBase))
-            // Key grid: 6 columns × 3 rows
             for row in 0..<3 {
                 let ky = 12.2 + CGFloat(row) * 1.0
                 for col in 0..<6 {
@@ -230,21 +334,21 @@ struct ClawdView: View {
                     c.fill(Path(v.r(kx, ky, w, 0.7)), with: .color(Self.kbKey))
                 }
             }
-            // Key flashes synced with arm hits
+            // Key flashes — colored by tool type
             if leftHit {
                 let row = leftKeyCol % 3
                 let kx = 0.3 + CGFloat(leftKeyCol) * 2.5
                 let ky = 12.2 + CGFloat(row) * 1.0
-                c.fill(Path(v.r(kx, ky, 2.0, 0.7)), with: .color(Self.kbHi.opacity(0.9)))
+                c.fill(Path(v.r(kx, ky, 2.0, 0.7)), with: .color(accent.opacity(0.9)))
             }
             if rightHit {
                 let row = (rightKeyCol - 3) % 3
                 let kx = 0.3 + CGFloat(rightKeyCol) * 2.5
                 let ky = 12.2 + CGFloat(row) * 1.0
-                c.fill(Path(v.r(kx, ky, 2.0, 0.7)), with: .color(Self.kbHi.opacity(0.9)))
+                c.fill(Path(v.r(kx, ky, 2.0, 0.7)), with: .color(accent.opacity(0.9)))
             }
 
-            // 6. Arms on top — pivot at body connection (inner edge of arm)
+            // Arms
             c.fill(armPath(v, x: 0, y: 9, w: 2, h: 2, pivotX: 2, pivotY: 10,
                            angle: armL, dy: dy), with: .color(Self.bodyC))
             c.fill(armPath(v, x: 13, y: 9, w: 2, h: 2, pivotX: 13, pivotY: 10,
