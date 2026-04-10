@@ -62,9 +62,12 @@ jobs:
       - name: Create DMG
         run: |
           DMG_PATH=".build/release/CodeIsland.dmg"
+          # Detach any existing mounts and retry
+          hdiutil detach /Volumes/CodeIsland 2>/dev/null || true
+          sleep 2
           hdiutil create -volname "CodeIsland" \
             -srcfolder ".build/release/CodeIsland.app" \
-            -ov -format UDZO \
+            -ov -format UDBZ \
             "$DMG_PATH"
           echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
 
